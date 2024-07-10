@@ -1,60 +1,128 @@
-import cv2
+import cv2 as cv
+import numpy as np
+import tkinter as tk
+from tkinter import ttk
+from PIL import ImageTk, Image
+import os
+from utils import load_img
 
-# 读取图片（请修改图片地址），可以改为绝对坐标 如果图片在程序文件的相同目录下，只需要改为名字就可以
-image_path = './assets/3.png'
-# 这里调节边缘检测拖动按钮的最大值和最小值，
-#low_threshold 和max_low_threshold  是边缘检测第一阈值可以拖动的最小值和最大值
-#high_threshold和 max_low_threshold 是边缘检测第二阈值可以拖动的最小值和最大值
-low_threshold = 0
-high_threshold = 0
+data_dir = "./assets/"
+window_title = "Edge detection"
 
-max_high_threshold = 500
-max_low_threshold = 100
 
-# 更新边缘检测结果的函数
-def update_edge_detection(image, low_thresh, high_thresh):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-    edges = cv2.Canny(blurred, low_thresh, high_thresh)
+def detect_edge(mat:np.ndarray, lower_threshold, upper_threshold):
+    # Gaussian blur to denoise image
+    blurred = cv.GaussianBlur(mat, (3, 3), 0)
+    edges = cv.Canny(blurred, lower_threshold, upper_threshold)
     return edges
 
-# 处理滑动条变化的回调函数
-def on_trackbar_change(val):
-    global low_threshold, high_threshold, image_path
 
-    image = cv2.imread(image_path)
+class App:
+    def __init__(self, window_name) -> None:
+        self.config_gui(window_name)
 
-    low_threshold = cv2.getTrackbarPos('Low Threshold', 'Edge Detection')
-    high_threshold = cv2.getTrackbarPos('High Threshold', 'Edge Detection')
+    def config_gui(self, window_name, width=500, height=300):
+        self.app = tk.Tk(window_name)
+        self.app.title(window_title)
+        self.app.minsize(width, height)
 
-    edges = update_edge_detection(image, low_threshold, high_threshold)
+        ## config layout
+        self.app.columnconfigure(0, weight=1)
+        self.app.columnconfigure(1, weight=1)
+        self.app.columnconfigure(2, weight=1)
+        self.app.rowconfigure(0, minsize=30)
+        self.app.rowconfigure(1, minsize=20)
+        self.app.rowconfigure(2, minsize=20)
+        self.app.rowconfigure(3, weight=1)
 
-    cv2.imshow('Edge Detection', edges)
+        ## Selective image
+        image_src_label = ttk.Label(self.app, text="Image: ")
+        image_src_label.grid(row=0, column=0, padx=10, sticky='e')
+        self.image_src = tk.StringVar(self.app)
+        self.image_src.set("./assets/1.png")
+        image_src_dropdown = ttk.Combobox(
+            self.app, width=27, textvariable=self.image_src
+        )
+        image_src_dropdown["value"] = [
+            "./assets/" + filename for filename in os.listdir(data_dir)
+        ]
+        image_src_dropdown.grid(row=0, column=1, columnspan=3, padx=10, sticky="we")
+        self.image_src.trace_add("write", self.update_gui)
 
-# 初始化GUI
-def main():
-    global image_path
+        ## Scrollbar to adjust lower threshold
+        self.lower_threshold = tk.IntVar(self.app)
+        self.lower_threshold.set(0)
+        scalebar = ttk.Scale(
+            self.app,
+            from_=0,
+            to=255,
+            variable=self.lower_threshold,
+            orient="horizontal",
+            command=self.update_gui,
+        )
+        scalebar.grid(row=1, column=1, columnspan=2, padx=20, sticky="we")
+        self.lower_label = ttk.Label(
+            self.app, text="lower threshold: " + str(self.lower_threshold.get())
+        )
+        self.lower_label.grid(row=1, column=0, padx=20, sticky="e")
 
-    cv2.namedWindow('Edge Detection')
+        ## Scrollbar to adjust upper threshold
+        self.upper_threshold = tk.IntVar(self.app)
+        self.upper_threshold.set(0)
+        scalebar = ttk.Scale(
+            self.app,
+            from_=0,
+            to=255,
+            variable=self.upper_threshold,
+            orient="horizontal",
+            command=self.update_gui,
+        )
+        scalebar.grid(row=2, column=1, columnspan=2, padx=20, sticky="we")
+        self.upper_label = ttk.Label(
+            self.app, text="upper threshold: " + str(self.upper_threshold.get())
+        )
+        self.upper_label.grid(row=2, column=0, padx=20, sticky="e")
 
-    cv2.createTrackbar('Low Threshold', 'Edge Detection', low_threshold, max_low_threshold, on_trackbar_change)
-    cv2.createTrackbar('High Threshold', 'Edge Detection', high_threshold, max_high_threshold, on_trackbar_change)
-    # FIXME: setup window size for created windows
+        ## Display image
+        mat = load_img(self.image_src.get())
+        mat = self.process_img(mat)
+        img_tk = ImageTk.PhotoImage(Image.fromarray(mat))
+        self.image_label = ttk.Label(self.app, image=img_tk)
+        self.image_label.image = (
+            img_tk  # NOTE: Preventing image_tk from being garbage collected
+        )
+        self.image_label.grid(row=3, column=0, columnspan=3, pady=20)
 
-    image = cv2.imread(image_path)
-    edges = update_edge_detection(image, low_threshold, high_threshold)
-    cv2.imshow('Edge Detection', edges)
+    def loop(self):
+        self.app.mainloop()
 
-    while True:
-        # BUG: program doesn't exit after close window
-        key = cv2.waitKey(1) & 0xFF
-        if key == 27:  # 按 'esc' 退出
-            break
-        elif key == ord('s'):  # 按 's' 保存当前显示的图像
-            cv2.imwrite('edges_detected.jpg',  update_edge_detection(image, low_threshold, high_threshold))
-            print('保存边缘检测结果为 edges_detected.jpg')
+    def process_img(self, mat):
+        lower = self.lower_threshold.get()
+        upper = self.upper_threshold.get()
+        mat = detect_edge(mat, lower, upper)
+        return mat
 
-    cv2.destroyAllWindows()
+    def update_gui(self, *args):
+        ## read from image src
+        mat = load_img(self.image_src.get())
+
+        ## udpate scalebar value
+        self.upper_label.config(
+            text="upper threshold: " + str(self.upper_threshold.get())
+        )
+        self.lower_label.config(
+            text="lower threshold: " + str(self.lower_threshold.get())
+        )
+
+        ## update processing result
+        result = self.process_img(mat)
+        self.img_tk = ImageTk.PhotoImage(Image.fromarray(result))
+        self.image_label.config(image=self.img_tk)
+        self.image_label.image = (
+            self.img_tk  # NOTE: Preventing image_tk from being garbage collected
+        )
+
 
 if __name__ == "__main__":
-    main()
+    app = App(window_title)
+    app.loop()

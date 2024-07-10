@@ -1,73 +1,165 @@
-import cv2
+import cv2 as cv
 import numpy as np
+import tkinter as tk
+from tkinter import ttk
+from PIL import ImageTk, Image
+import os
+from utils import load_img
 
-# 初始化高斯滤波参数，调节可拖动的最小值和最大值在45行，47行   图片地址在第9行
-kernel_size = 5
-sigma = 1
-border_type = cv2.BORDER_DEFAULT
-
-# 读取图片（请修改图片地址），可以改为绝对坐标 如果图片在程序文件的相同目录下，只需要改为名字就可以
-image_path = './assets/3.png'
-original_image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-
-if original_image is None:
-    raise FileNotFoundError(f"Image not found at {image_path}")
+data_dir = "./assets/"
+window_title = "Guassian Filtering"
 
 
-# 定义滑动条回调函数
-def update_image(x):
-    global kernel_size, sigma, border_type
-    try:
-        kernel_size = cv2.getTrackbarPos('Kernel Size', 'Gaussian Filter') * 2 + 1
-        sigma = cv2.getTrackbarPos('Sigma', 'Gaussian Filter')
-        border_type_index = cv2.getTrackbarPos('Border Type', 'Gaussian Filter')
+def guassian_filering(mat: np.ndarray, kernel_size, sigma):
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    filtered_image = cv.GaussianBlur(mat, (kernel_size, kernel_size), sigma, sigma)
+    return filtered_image
 
-        border_types = [
-            cv2.BORDER_CONSTANT, cv2.BORDER_REPLICATE, cv2.BORDER_REFLECT,
-            cv2.BORDER_WRAP, cv2.BORDER_REFLECT_101, cv2.BORDER_DEFAULT,
-            cv2.BORDER_TRANSPARENT
+
+def medium_filtering(mat: np.ndarray, kernel_size):
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    return cv.medianBlur(mat, kernel_size)
+
+
+def bilateral_filtering(mat: np.ndarray, kernel_size):
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    return cv.bilateralFilter(mat, kernel_size, kernel_size*2, kernel_size/2)
+
+
+class App:
+    def __init__(self, window_name) -> None:
+        self.filter_methods = [
+            "gaussian blur",
+            "medium filtering",
+            "bilateral filtering",
         ]
-        border_type = border_types[border_type_index]
+        self.config_gui(window_name)
 
-        if kernel_size % 2 == 0:
-            kernel_size += 1
+    def config_gui(self, window_name, width=500, height=300):
+        self.app = tk.Tk(window_name)
+        self.app.title(window_title)
+        self.app.minsize(width, height)
 
-        filtered_image = cv2.GaussianBlur(original_image, (kernel_size, kernel_size), sigma, borderType=border_type)
-        cv2.imshow('Gaussian Filter', filtered_image)
-    except cv2.error as e:
-        print("Error accessing trackbar value:", e)
+        ## config layout
+        self.app.columnconfigure(0, weight=1)
+        self.app.columnconfigure(1, weight=1)
+        self.app.columnconfigure(2, weight=1)
+        self.app.rowconfigure(0, minsize=30)
+        self.app.rowconfigure(1, minsize=20)
+        self.app.rowconfigure(2, minsize=20)
+        self.app.rowconfigure(3, minsize=20)
+        self.app.rowconfigure(4, weight=1)
+
+        ## Selective image
+        image_src_label = ttk.Label(self.app, text="Image: ")
+        image_src_label.grid(row=0, column=0, padx=10, sticky="e")
+        self.image_src = tk.StringVar(self.app)
+        self.image_src.set("./assets/1.png")
+        image_src_dropdown = ttk.Combobox(
+            self.app, width=27, textvariable=self.image_src
+        )
+        image_src_dropdown["value"] = [
+            "./assets/" + filename for filename in os.listdir(data_dir)
+        ]
+        image_src_dropdown.grid(row=0, column=1, columnspan=3, padx=10, sticky="we")
+        self.image_src.trace_add("write", self.update_gui)
+
+        ## Select filtering method
+        filter_method_label = ttk.Label(self.app, text="Filtering method: ")
+        filter_method_label.grid(row=1, column=0, padx=10, sticky="e")
+        self.filter_type = tk.StringVar(self.app)
+        self.filter_type.set(self.filter_methods[0])
+        filter_method_dropdown = ttk.Combobox(
+            self.app,
+            width=27,
+            textvariable=self.filter_type,
+        )
+        filter_method_dropdown["value"] = self.filter_methods
+        filter_method_dropdown.grid(row=1, column=1, columnspan=3, padx=10, sticky="we")
+        self.filter_type.trace_add("write", self.update_gui)
+
+        ## Scrollbar to adjust kernel size
+        self.kernel_size = tk.IntVar(self.app)
+        self.kernel_size.set(0)
+        scalebar = ttk.Scale(
+            self.app,
+            from_=0,
+            to=50,
+            variable=self.kernel_size,
+            orient="horizontal",
+            command=self.update_gui,
+        )
+        scalebar.grid(row=2, column=1, columnspan=2, padx=20, sticky="we")
+        self.kernel_size_label = ttk.Label(
+            self.app, text="Kernel size: " + str(self.kernel_size.get())
+        )
+        self.kernel_size_label.grid(row=2, column=0, padx=20, sticky="e")
+
+        ## Scrollbar to adjust upper threshold
+        self.sigma = tk.IntVar(self.app)
+        self.sigma.set(0)
+        scalebar = ttk.Scale(
+            self.app,
+            from_=0,
+            to=25,
+            variable=self.sigma,
+            orient="horizontal",
+            command=self.update_gui,
+        )
+        scalebar.grid(row=3, column=1, columnspan=2, padx=20, sticky="we")
+        self.simga_label = ttk.Label(self.app, text="Sigma: " + str(self.sigma.get()))
+        self.simga_label.grid(row=3, column=0, padx=20, sticky="e")
+
+        ## Display image
+        mat = load_img(self.image_src.get())
+        mat = self.process_img(mat)
+        img_tk = ImageTk.PhotoImage(Image.fromarray(mat))
+        self.image_label = ttk.Label(self.app, image=img_tk)
+        self.image_label.image = (
+            img_tk  # NOTE: Preventing image_tk from being garbage collected
+        )
+        self.image_label.grid(row=4, column=0, columnspan=3, pady=20)
+
+    def loop(self):
+        self.app.mainloop()
+
+    def process_img(self, mat):
+        kernel_size = self.kernel_size.get()
+        sigma = self.sigma.get()
+
+        filter_type = self.filter_type.get()
+        if filter_type == self.filter_methods[0]:
+            mat = guassian_filering(mat, kernel_size, sigma)
+        elif filter_type == self.filter_methods[1]:
+            mat = medium_filtering(mat, kernel_size)
+        elif filter_type == self.filter_methods[2]:
+            mat = bilateral_filtering(mat, kernel_size)
+        else:
+            raise ValueError(f"Unknown filtering method {self.filter_type}")
+        return mat
+
+    def update_gui(self, *args):
+        ## read from image src
+        mat = load_img(self.image_src.get())
+
+        ## udpate scalebar value
+        self.simga_label.config(text="Sigma: " + str(self.sigma.get()))
+        self.kernel_size_label.config(
+            text="Kernel size: " + str(self.kernel_size.get())
+        )
+
+        ## update processing result
+        result = self.process_img(mat)
+        self.img_tk = ImageTk.PhotoImage(Image.fromarray(result))
+        self.image_label.config(image=self.img_tk)
+        self.image_label.image = (
+            self.img_tk  # NOTE: Preventing image_tk from being garbage collected
+        )
 
 
-# 创建窗口
-cv2.namedWindow('Gaussian Filter')
-# FIXME: setup window size for created windows
-
-# 创建滑动条 这里可以改变滑动条的可以拖动的最小值和最大值
-cv2.createTrackbar('Kernel Size', 'Gaussian Filter', 2, 101, update_image)
-# Kernel Size 是卷积核大小因此，通过调整 Kernel Size 的大小，可以控制图像在进行高斯滤波时的模糊程度和效果。，
-cv2.createTrackbar('Sigma', 'Gaussian Filter', 1, 50, update_image)
-# Sigma 是高斯函数的标准差参数，也称为高斯核的方差。它决定了高斯分布的形状，从而影响了滤波器如何在图像上进行模糊操作。较大的 Sigma 值会导致更多的周围像素对中心像素的影响，从而产生更强的模糊效果。而较小的 Sigma 值则会产生较为锐利的图像，因为只有较近的像素对中心像素产生显著的影响。
-cv2.createTrackbar('Border Type', 'Gaussian Filter', 0, 6, update_image)
-# 在高斯滤波中，"Border Type"（边界类型）指定了在对图像进行卷积时处理图像边界的方式。
-
-# 初始化滑动条的初始值
-cv2.setTrackbarPos('Kernel Size', 'Gaussian Filter', 2)
-cv2.setTrackbarPos('Sigma', 'Gaussian Filter', 1)
-cv2.setTrackbarPos('Border Type', 'Gaussian Filter', 0)
-
-# 调用一次更新函数以初始化显示
-update_image(0)
-
-# 显示初始图像
-cv2.imshow('Gaussian Filter', original_image)
-
-while True:
-    # BUG: program doesn't exit after close window
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('s'):  # 按 's' 保存图像
-        cv2.imwrite('filtered_image.jpg',
-                    cv2.GaussianBlur(original_image, (kernel_size, kernel_size), sigma, borderType=border_type))
-    elif key == 27:  # 按 'ESC' 退出程序
-        break
-
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    app = App(window_title)
+    app.loop()
