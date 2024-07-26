@@ -7,7 +7,7 @@ import os
 from utils import load_img
 
 data_dir = "./assets/"
-window_title = "Guassian Filtering"
+window_title = "Image Filtering"
 
 
 def guassian_filering(mat: np.ndarray, kernel_size, sigma):
@@ -81,7 +81,7 @@ class App:
         filter_method_dropdown.grid(row=1, column=1, columnspan=3, padx=10, sticky="we")
         self.filter_type.trace_add("write", self.update_gui)
 
-        ## Scrollbar to adjust kernel size
+        ## Slidebar to adjust kernel size
         self.kernel_size = tk.IntVar(self.app)
         self.kernel_size.set(0)
         scalebar = ttk.Scale(
@@ -98,7 +98,7 @@ class App:
         )
         self.kernel_size_label.grid(row=2, column=0, padx=20, sticky="e")
 
-        ## Scrollbar to adjust upper threshold
+        ## Slidebar to adjust upper threshold
         self.sigma = tk.IntVar(self.app)
         self.sigma.set(0)
         scalebar = ttk.Scale(

@@ -7,14 +7,14 @@ import os
 from utils import load_img
 
 data_dir = "./assets/"
-window_title = "Edge detection"
+window_title = "Image enhancement"
 
 
-def detect_edge(mat:np.ndarray, lower_threshold, upper_threshold):
-    # Gaussian blur to denoise image
-    blurred = cv.GaussianBlur(mat, (3, 3), 0)
-    edges = cv.Canny(blurred, lower_threshold, upper_threshold)
-    return edges
+def change_brightness_contrast(
+    mat: np.ndarray, brightness_factor: int, contrast_factor: float
+):
+    mat = np.clip(contrast_factor * mat + brightness_factor, 0, 255)
+    return mat
 
 
 class App:
@@ -37,7 +37,7 @@ class App:
 
         ## Selective image
         image_src_label = ttk.Label(self.app, text="Image: ")
-        image_src_label.grid(row=0, column=0, padx=10, sticky='e')
+        image_src_label.grid(row=0, column=0, padx=10, sticky="e")
         self.image_src = tk.StringVar(self.app)
         self.image_src.set("./assets/1.png")
         image_src_dropdown = ttk.Combobox(
@@ -49,39 +49,40 @@ class App:
         image_src_dropdown.grid(row=0, column=1, columnspan=3, padx=10, sticky="we")
         self.image_src.trace_add("write", self.update_gui)
 
-        ## Slidebar to adjust lower threshold
-        self.lower_threshold = tk.IntVar(self.app)
-        self.lower_threshold.set(0)
+        ## Slidebar to adjust kernel size
+        self.brightness_adjustment = tk.IntVar(self.app)
+        self.brightness_adjustment.set(0)
         scalebar = ttk.Scale(
             self.app,
-            from_=0,
-            to=255,
-            variable=self.lower_threshold,
+            from_=-100,
+            to=100,
+            variable=self.brightness_adjustment,
             orient="horizontal",
             command=self.update_gui,
         )
         scalebar.grid(row=1, column=1, columnspan=2, padx=20, sticky="we")
-        self.lower_label = ttk.Label(
-            self.app, text="lower threshold: " + str(self.lower_threshold.get())
+        self.brightness_adjustment_label = ttk.Label(
+            self.app,
+            text="brightness adjustment: " + str(self.brightness_adjustment.get()),
         )
-        self.lower_label.grid(row=1, column=0, padx=20, sticky="e")
+        self.brightness_adjustment_label.grid(row=1, column=0, padx=20, sticky="e")
 
         ## Slidebar to adjust upper threshold
-        self.upper_threshold = tk.IntVar(self.app)
-        self.upper_threshold.set(0)
+        self.contrast_factor = tk.DoubleVar(self.app)
+        self.contrast_factor.set(1.0)
         scalebar = ttk.Scale(
             self.app,
-            from_=0,
-            to=255,
-            variable=self.upper_threshold,
+            from_=0.1,
+            to=3.0,
+            variable=self.contrast_factor,
             orient="horizontal",
             command=self.update_gui,
         )
         scalebar.grid(row=2, column=1, columnspan=2, padx=20, sticky="we")
-        self.upper_label = ttk.Label(
-            self.app, text="upper threshold: " + str(self.upper_threshold.get())
+        self.contrast_factor_label = ttk.Label(
+            self.app, text="contrast factor: " + str(self.contrast_factor.get())
         )
-        self.upper_label.grid(row=2, column=0, padx=20, sticky="e")
+        self.contrast_factor_label.grid(row=2, column=0, padx=20, sticky="e")
 
         ## Display image
         mat = load_img(self.image_src.get())
@@ -97,9 +98,9 @@ class App:
         self.app.mainloop()
 
     def process_img(self, mat):
-        lower = self.lower_threshold.get()
-        upper = self.upper_threshold.get()
-        mat = detect_edge(mat, lower, upper)
+        brightness_adjustment = self.brightness_adjustment.get()
+        contrast_factor = self.contrast_factor.get()
+        mat = change_brightness_contrast(mat, brightness_adjustment, contrast_factor)
         return mat
 
     def update_gui(self, *args):
@@ -107,11 +108,11 @@ class App:
         mat = load_img(self.image_src.get())
 
         ## udpate scalebar value
-        self.upper_label.config(
-            text="upper threshold: " + str(self.upper_threshold.get())
+        self.brightness_adjustment_label.config(
+            text="brightness adjustment: " + str(self.brightness_adjustment.get())
         )
-        self.lower_label.config(
-            text="lower threshold: " + str(self.lower_threshold.get())
+        self.contrast_factor_label.config(
+            text=f"contrast factor: {self.contrast_factor.get():.1f}"
         )
 
         ## update processing result
